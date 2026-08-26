@@ -58,6 +58,8 @@ pub struct HighlightInputState<P> {
     hovered: Option<HoverTarget>,
     #[cfg(test)]
     decoration_epoch: usize,
+    #[cfg(test)]
+    last_set_decorations: Vec<TextDecoration>,
 }
 
 fn validate_spans<P>(
@@ -111,6 +113,8 @@ impl<P: Clone + PartialEq + 'static> HighlightInputState<P> {
             hovered: None,
             #[cfg(test)]
             decoration_epoch: 0,
+            #[cfg(test)]
+            last_set_decorations: Vec::new(),
         }
     }
 
@@ -219,11 +223,11 @@ impl<P: Clone + PartialEq + 'static> HighlightInputState<P> {
         }
     }
 
-    fn sync_styles(&mut self, styles: Vec<HighlightStyle>, cx: &mut Context<Self>) {
-        if styles.is_empty() || self.styles == styles {
+    fn sync_styles(&mut self, styles: &[HighlightStyle], cx: &mut Context<Self>) {
+        if styles.is_empty() || self.styles.as_slice() == styles {
             return;
         }
-        self.styles = styles;
+        self.styles = styles.to_vec();
         self.rebuild_decorations(cx);
     }
 
@@ -240,13 +244,21 @@ impl<P: Clone + PartialEq + 'static> HighlightInputState<P> {
                 TextDecoration::new(span.range.clone(), self.style_for_span(index))
             })
             .collect();
+        #[cfg(test)]
+        let captured_decorations = decorations.clone();
         self.input.update(cx, |input, cx| {
             input.set_text_decorations(decorations, cx);
         });
         #[cfg(test)]
         {
             self.decoration_epoch += 1;
+            self.last_set_decorations = captured_decorations;
         }
+    }
+
+    #[cfg(test)]
+    fn last_set_decorations(&self) -> Vec<TextDecoration> {
+        self.last_set_decorations.clone()
     }
 }
 
@@ -427,9 +439,11 @@ mod tests {
                     background_color: Some(gpui::blue()),
                     ..Default::default()
                 };
-                state.sync_styles(vec![first.clone()], cx);
-                state.sync_styles(vec![first], cx);
-                state.sync_styles(vec![changed], cx);
+                let first_styles = vec![first];
+                let changed_styles = vec![changed];
+                state.sync_styles(&first_styles, cx);
+                state.sync_styles(&first_styles, cx);
+                state.sync_styles(&changed_styles, cx);
                 state.decoration_epoch
             })
         });

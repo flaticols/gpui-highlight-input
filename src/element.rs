@@ -114,7 +114,7 @@ impl<P: Clone + PartialEq + 'static> Element for HighlightInputElement<P> {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let styles = self.styles.clone();
+        let styles = self.styles.as_slice();
         self.state
             .update(cx, |state, cx| state.sync_styles(styles, cx));
         child.prepaint(window, cx);
@@ -164,7 +164,7 @@ mod tests {
     };
     use gpui_component::{
         ActiveTheme as _, Sizable as _,
-        input::{Input, InputState},
+        input::{Input, InputState, TextDecoration},
     };
 
     type Events = Rc<RefCell<Vec<HighlightInputEvent<String>>>>;
@@ -294,11 +294,16 @@ mod tests {
         });
         cx.run_until_parked();
 
-        let styles: Vec<gpui::HighlightStyle> = cx.update(|_, cx| {
-            let state = view.read(cx).highlighted.read(cx);
-            (0..3).map(|index| state.style_for_span(index)).collect()
-        });
-        assert_eq!(styles, vec![first, second, first]);
+        let decorations =
+            cx.update(|_, cx| view.read(cx).highlighted.read(cx).last_set_decorations());
+        assert_eq!(
+            decorations,
+            vec![
+                TextDecoration::new(1..8, first.clone()),
+                TextDecoration::new(8..15, second),
+                TextDecoration::new(15..24, first),
+            ]
+        );
     }
 
     #[gpui::test]
@@ -339,11 +344,15 @@ mod tests {
         });
         cx.run_until_parked();
 
-        let styles: Vec<gpui::HighlightStyle> = cx.update(|_, cx| {
-            let state = view.read(cx).highlighted.read(cx);
-            (0..2).map(|index| state.style_for_span(index)).collect()
-        });
-        assert_eq!(styles, vec![style.clone(), style]);
+        let decorations =
+            cx.update(|_, cx| view.read(cx).highlighted.read(cx).last_set_decorations());
+        assert_eq!(
+            decorations,
+            vec![
+                TextDecoration::new(1..8, style.clone()),
+                TextDecoration::new(8..15, style),
+            ]
+        );
     }
 
     #[gpui::test]
@@ -370,15 +379,15 @@ mod tests {
         });
         cx.run_until_parked();
 
-        let (styles, default) = cx.update(|_, cx| {
-            let styles = vec![view.read(cx).highlighted.read(cx).style_for_span(0)];
+        let (decorations, default) = cx.update(|_, cx| {
+            let decorations = view.read(cx).highlighted.read(cx).last_set_decorations();
             let default = gpui::HighlightStyle {
                 background_color: Some(cx.theme().primary.opacity(0.1)),
                 ..Default::default()
             };
-            (styles, default)
+            (decorations, default)
         });
-        assert_eq!(styles, vec![default]);
+        assert_eq!(decorations, vec![TextDecoration::new(0..7, default)]);
     }
 
     #[gpui::test]
