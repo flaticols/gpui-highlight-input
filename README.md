@@ -17,7 +17,7 @@ wrapper validated UTF-8 byte ranges, subscribes to semantic events, and keeps
 using the same `InputState` for editing and rendering:
 
 ```rust
-use gpui::{Context, Entity, IntoElement, Render, Subscription, Window};
+use gpui::{AppContext as _, Context, Entity, IntoElement, Render, Subscription, Window};
 use gpui_component::input::InputState;
 use gpui_highlight_input::{
     HighlightInput, HighlightInputEvent, HighlightInputState, HighlightSpan,
