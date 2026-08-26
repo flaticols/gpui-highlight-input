@@ -1,6 +1,10 @@
+mod element;
+
+pub use element::HighlightInput;
+
 use std::ops::Range;
 
-use gpui::{Bounds, Context, Entity, EventEmitter, HighlightStyle, Pixels};
+use gpui::{Bounds, Context, Entity, EventEmitter, HighlightStyle, Pixels, Point};
 use gpui_component::input::{InputState, TextDecoration};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -114,6 +118,59 @@ impl<P: Clone + PartialEq + 'static> HighlightInputState<P> {
         &self.input
     }
 
+    fn candidate_at(&self, position: Point<Pixels>, cx: &gpui::App) -> Option<HoverTarget> {
+        let input = self.input.read(cx);
+        let offset = input.text_offset_at_position(position)?;
+        let split = self
+            .spans
+            .partition_point(|span| span.range.start <= offset);
+        let primary = split.checked_sub(1);
+        let previous = primary.and_then(|index| index.checked_sub(1));
+
+        for index in [primary, previous].into_iter().flatten() {
+            let span = &self.spans[index];
+            let Some(bounds) = input.range_to_bounds(&span.range) else {
+                continue;
+            };
+            if bounds.contains(&position) {
+                return Some(HoverTarget {
+                    index,
+                    range: span.range.clone(),
+                    bounds,
+                });
+            }
+        }
+        None
+    }
+
+    fn hit_for_target(&self, target: &HoverTarget) -> HighlightHit<P> {
+        let span = &self.spans[target.index];
+        HighlightHit {
+            payload: span.payload.clone(),
+            range: span.range.clone(),
+            bounds: target.bounds,
+        }
+    }
+
+    fn update_hover(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let candidate = self.candidate_at(position, cx);
+        if candidate.as_ref() == self.hovered.as_ref() {
+            return;
+        }
+
+        let hit = candidate.as_ref().map(|target| self.hit_for_target(target));
+        self.hovered = candidate;
+        cx.emit(HighlightInputEvent::HoverChanged(hit));
+    }
+
+    fn click(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let Some(target) = self.candidate_at(position, cx) else {
+            return;
+        };
+        let hit = self.hit_for_target(&target);
+        cx.emit(HighlightInputEvent::Clicked(hit));
+    }
+
     pub fn set_spans(
         &mut self,
         spans: Vec<HighlightSpan<P>>,
@@ -162,7 +219,6 @@ impl<P: Clone + PartialEq + 'static> HighlightInputState<P> {
         }
     }
 
-    #[allow(dead_code)] // Called by the transparent interaction element added in Task 3.
     fn sync_style(&mut self, style: HighlightStyle, cx: &mut Context<Self>) {
         if self.style == style {
             return;
