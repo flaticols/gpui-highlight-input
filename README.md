@@ -2,13 +2,21 @@
 
 A lightweight wrapper around gpui-component's single-line InputState. The
 application supplies validated UTF-8 byte ranges and semantic payloads; the
-wrapper decorates them and emits hover/click events from one input-wide handler.
+wrapper decorates them and emits semantic hover/click events. One input-wide
+move listener tracks hover, one input-wide click listener emits activation, and
+one input-wide exit listener clears hover. No visual child or listener is
+created per span.
 
 It does not parse templates, own popovers, reveal secrets, persist values, use
 EditorState, or clone payloads while the pointer remains within one span.
 
 The crate currently uses immutable git revisions and is not yet published to
 crates.io.
+
+## Demo
+
+Run `cargo run` to open a compact URL request bar. Edit the URL, hover or click
+its `{{variable}}` references, and watch the diagnostic line below the input.
 
 ## Example
 
