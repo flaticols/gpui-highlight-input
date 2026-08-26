@@ -54,10 +54,12 @@ struct HoverTarget {
 pub struct HighlightInputState<P> {
     input: Entity<InputState>,
     spans: Vec<HighlightSpan<P>>,
-    style: HighlightStyle,
+    styles: Vec<HighlightStyle>,
     hovered: Option<HoverTarget>,
     #[cfg(test)]
     decoration_epoch: usize,
+    #[cfg(test)]
+    last_set_decorations: Vec<TextDecoration>,
 }
 
 fn validate_spans<P>(
@@ -107,10 +109,12 @@ impl<P: Clone + PartialEq + 'static> HighlightInputState<P> {
         Self {
             input,
             spans: Vec::new(),
-            style: HighlightStyle::default(),
+            styles: vec![HighlightStyle::default()],
             hovered: None,
             #[cfg(test)]
             decoration_epoch: 0,
+            #[cfg(test)]
+            last_set_decorations: Vec::new(),
         }
     }
 
@@ -219,27 +223,42 @@ impl<P: Clone + PartialEq + 'static> HighlightInputState<P> {
         }
     }
 
-    fn sync_style(&mut self, style: HighlightStyle, cx: &mut Context<Self>) {
-        if self.style == style {
+    fn sync_styles(&mut self, styles: &[HighlightStyle], cx: &mut Context<Self>) {
+        if styles.is_empty() || self.styles.as_slice() == styles {
             return;
         }
-        self.style = style;
+        self.styles = styles.to_vec();
         self.rebuild_decorations(cx);
     }
 
+    fn style_for_span(&self, index: usize) -> HighlightStyle {
+        self.styles[index % self.styles.len()].clone()
+    }
+
     fn rebuild_decorations(&mut self, cx: &mut Context<Self>) {
-        let decorations = self
+        let decorations: Vec<TextDecoration> = self
             .spans
             .iter()
-            .map(|span| TextDecoration::new(span.range.clone(), self.style))
+            .enumerate()
+            .map(|(index, span)| {
+                TextDecoration::new(span.range.clone(), self.style_for_span(index))
+            })
             .collect();
+        #[cfg(test)]
+        let captured_decorations = decorations.clone();
         self.input.update(cx, |input, cx| {
             input.set_text_decorations(decorations, cx);
         });
         #[cfg(test)]
         {
             self.decoration_epoch += 1;
+            self.last_set_decorations = captured_decorations;
         }
+    }
+
+    #[cfg(test)]
+    fn last_set_decorations(&self) -> Vec<TextDecoration> {
+        self.last_set_decorations.clone()
     }
 }
 
@@ -388,7 +407,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn sync_style_rebuilds_only_when_the_style_changes(cx: &mut gpui::TestAppContext) {
+    fn sync_styles_rebuild_only_when_the_styles_change(cx: &mut gpui::TestAppContext) {
         cx.update(gpui_component::init);
         let cx = cx.add_empty_window();
         let input = cx.update(|window, cx| {
@@ -420,9 +439,11 @@ mod tests {
                     background_color: Some(gpui::blue()),
                     ..Default::default()
                 };
-                state.sync_style(first, cx);
-                state.sync_style(first, cx);
-                state.sync_style(changed, cx);
+                let first_styles = vec![first];
+                let changed_styles = vec![changed];
+                state.sync_styles(&first_styles, cx);
+                state.sync_styles(&first_styles, cx);
+                state.sync_styles(&changed_styles, cx);
                 state.decoration_epoch
             })
         });

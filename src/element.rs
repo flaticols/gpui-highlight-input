@@ -10,7 +10,7 @@ use crate::HighlightInputState;
 #[derive(IntoElement)]
 pub struct HighlightInput<P: Clone + PartialEq + 'static> {
     state: Entity<HighlightInputState<P>>,
-    style: Option<HighlightStyle>,
+    styles: Option<Vec<HighlightStyle>>,
     content: Option<AnyElement>,
 }
 
@@ -18,13 +18,21 @@ impl<P: Clone + PartialEq + 'static> HighlightInput<P> {
     pub fn new(state: &Entity<HighlightInputState<P>>) -> Self {
         Self {
             state: state.clone(),
-            style: None,
+            styles: None,
             content: None,
         }
     }
 
     pub fn highlight_style(mut self, style: HighlightStyle) -> Self {
-        self.style = Some(style);
+        self.styles = Some(vec![style]);
+        self
+    }
+
+    /// Apply the supplied styles to validated spans in order, cycling when
+    /// there are more spans than styles. An empty collection uses the default
+    /// highlight style.
+    pub fn highlight_styles(mut self, styles: impl IntoIterator<Item = HighlightStyle>) -> Self {
+        self.styles = Some(styles.into_iter().collect());
         self
     }
 
@@ -42,14 +50,18 @@ impl<P: Clone + PartialEq + 'static> RenderOnce for HighlightInput<P> {
         let child = self
             .content
             .unwrap_or_else(|| Input::new(&input).small().into_any_element());
-        let style = self.style.unwrap_or_else(|| HighlightStyle {
+        let default_style = HighlightStyle {
             background_color: Some(cx.theme().primary.opacity(0.1)),
             ..Default::default()
-        });
+        };
+        let styles = self
+            .styles
+            .filter(|styles| !styles.is_empty())
+            .unwrap_or_else(|| vec![default_style]);
 
         HighlightInputElement {
             state: self.state,
-            style,
+            styles,
             child: Some(child),
         }
     }
@@ -57,7 +69,7 @@ impl<P: Clone + PartialEq + 'static> RenderOnce for HighlightInput<P> {
 
 struct HighlightInputElement<P: Clone + PartialEq + 'static> {
     state: Entity<HighlightInputState<P>>,
-    style: HighlightStyle,
+    styles: Vec<HighlightStyle>,
     child: Option<AnyElement>,
 }
 
@@ -102,9 +114,9 @@ impl<P: Clone + PartialEq + 'static> Element for HighlightInputElement<P> {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let style = self.style.clone();
+        let styles = self.styles.as_slice();
         self.state
-            .update(cx, |state, cx| state.sync_style(style, cx));
+            .update(cx, |state, cx| state.sync_styles(styles, cx));
         child.prepaint(window, cx);
     }
 
@@ -151,8 +163,8 @@ mod tests {
         VisualTestContext, Window, div, point, px,
     };
     use gpui_component::{
-        Sizable as _,
-        input::{Input, InputState},
+        ActiveTheme as _, Sizable as _,
+        input::{Input, InputState, TextDecoration},
     };
 
     type Events = Rc<RefCell<Vec<HighlightInputEvent<String>>>>;
@@ -166,6 +178,17 @@ mod tests {
     impl Render for HighlightHarness {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             HighlightInput::new(&self.highlighted)
+        }
+    }
+
+    struct StyledHighlightHarness {
+        highlighted: Entity<HighlightInputState<String>>,
+        styles: Vec<gpui::HighlightStyle>,
+    }
+
+    impl Render for StyledHighlightHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            HighlightInput::new(&self.highlighted).highlight_styles(self.styles.clone())
         }
     }
 
@@ -222,6 +245,149 @@ mod tests {
             .iter()
             .filter(|event| matches!(event, HighlightInputEvent::HoverChanged(Some(_))))
             .count()
+    }
+
+    #[gpui::test]
+    fn multiple_highlight_styles_cycle_by_validated_span_order(cx: &mut TestAppContext) {
+        cx.update(gpui_component::init);
+        let first = gpui::HighlightStyle {
+            background_color: Some(gpui::red()),
+            ..Default::default()
+        };
+        let second = gpui::HighlightStyle {
+            background_color: Some(gpui::blue()),
+            ..Default::default()
+        };
+        let (view, cx) = cx.add_window_view({
+            let styles = vec![first.clone(), second.clone()];
+            move |window, cx| {
+                let input = cx.new(|cx| {
+                    InputState::new(window, cx).default_value("A{{one}}{{two}}{{three}}Z")
+                });
+                let highlighted = cx.new(|cx| HighlightInputState::new(input, cx));
+                highlighted.update(cx, |highlighted, cx| {
+                    highlighted
+                        .set_spans(
+                            vec![
+                                HighlightSpan {
+                                    range: 15..24,
+                                    payload: "three".to_string(),
+                                },
+                                HighlightSpan {
+                                    range: 1..8,
+                                    payload: "one".to_string(),
+                                },
+                                HighlightSpan {
+                                    range: 8..15,
+                                    payload: "two".to_string(),
+                                },
+                            ],
+                            cx,
+                        )
+                        .unwrap();
+                });
+                StyledHighlightHarness {
+                    highlighted,
+                    styles,
+                }
+            }
+        });
+        cx.run_until_parked();
+
+        let decorations =
+            cx.update(|_, cx| view.read(cx).highlighted.read(cx).last_set_decorations());
+        assert_eq!(
+            decorations,
+            vec![
+                TextDecoration::new(1..8, first.clone()),
+                TextDecoration::new(8..15, second),
+                TextDecoration::new(15..24, first),
+            ]
+        );
+    }
+
+    #[gpui::test]
+    fn one_highlight_style_applies_to_every_validated_span(cx: &mut TestAppContext) {
+        cx.update(gpui_component::init);
+        let style = gpui::HighlightStyle {
+            background_color: Some(gpui::red()),
+            ..Default::default()
+        };
+        let (view, cx) = cx.add_window_view({
+            let styles = vec![style.clone()];
+            move |window, cx| {
+                let input =
+                    cx.new(|cx| InputState::new(window, cx).default_value("A{{one}}{{two}}Z"));
+                let highlighted = cx.new(|cx| HighlightInputState::new(input, cx));
+                highlighted.update(cx, |highlighted, cx| {
+                    highlighted
+                        .set_spans(
+                            vec![
+                                HighlightSpan {
+                                    range: 8..15,
+                                    payload: "two".to_string(),
+                                },
+                                HighlightSpan {
+                                    range: 1..8,
+                                    payload: "one".to_string(),
+                                },
+                            ],
+                            cx,
+                        )
+                        .unwrap();
+                });
+                StyledHighlightHarness {
+                    highlighted,
+                    styles,
+                }
+            }
+        });
+        cx.run_until_parked();
+
+        let decorations =
+            cx.update(|_, cx| view.read(cx).highlighted.read(cx).last_set_decorations());
+        assert_eq!(
+            decorations,
+            vec![
+                TextDecoration::new(1..8, style.clone()),
+                TextDecoration::new(8..15, style),
+            ]
+        );
+    }
+
+    #[gpui::test]
+    fn an_empty_highlight_style_collection_uses_the_theme_default(cx: &mut TestAppContext) {
+        cx.update(gpui_component::init);
+        let (view, cx) = cx.add_window_view(|window, cx| {
+            let input = cx.new(|cx| InputState::new(window, cx).default_value("{{one}}"));
+            let highlighted = cx.new(|cx| HighlightInputState::new(input, cx));
+            highlighted.update(cx, |highlighted, cx| {
+                highlighted
+                    .set_spans(
+                        vec![HighlightSpan {
+                            range: 0..7,
+                            payload: "one".to_string(),
+                        }],
+                        cx,
+                    )
+                    .unwrap();
+            });
+            StyledHighlightHarness {
+                highlighted,
+                styles: Vec::new(),
+            }
+        });
+        cx.run_until_parked();
+
+        let (decorations, default) = cx.update(|_, cx| {
+            let decorations = view.read(cx).highlighted.read(cx).last_set_decorations();
+            let default = gpui::HighlightStyle {
+                background_color: Some(cx.theme().primary.opacity(0.1)),
+                ..Default::default()
+            };
+            (decorations, default)
+        });
+        assert_eq!(decorations, vec![TextDecoration::new(0..7, default)]);
     }
 
     #[gpui::test]

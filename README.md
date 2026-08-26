@@ -10,6 +10,10 @@ created per span.
 It does not parse templates, own popovers, reveal secrets, persist values, use
 EditorState, or clone payloads while the pointer remains within one span.
 
+`highlight_style` applies one style to every span. For alternating presentation,
+`highlight_styles` accepts an iterator and cycles styles by validated span order;
+an empty collection safely uses the default theme-derived highlight style.
+
 The crate currently uses immutable git revisions and is not yet published to
 crates.io.
 

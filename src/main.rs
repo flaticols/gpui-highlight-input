@@ -10,7 +10,7 @@ use gpui_highlight_input::{
     HighlightInput, HighlightInputEvent, HighlightInputState, HighlightSpan,
 };
 
-const INITIAL_URL: &str = "https://{{host}}/{{version}}/health";
+const INITIAL_URL: &str = "https://{{host}}/{{version}}/{{resource}}";
 
 struct Playground {
     url: Entity<InputState>,
@@ -90,12 +90,23 @@ impl Render for Playground {
                     .child(Button::new("method").small().ghost().label("GET"))
                     .child(
                         div().flex_1().min_w_0().child(
-                            HighlightInput::new(&self.highlighted).content(
-                                Input::new(&self.url)
-                                    .small()
-                                    .appearance(false)
-                                    .content_type(InputContentType::Url),
-                            ),
+                            HighlightInput::new(&self.highlighted)
+                                .content(
+                                    Input::new(&self.url)
+                                        .small()
+                                        .appearance(false)
+                                        .content_type(InputContentType::Url),
+                                )
+                                .highlight_styles([
+                                    HighlightStyle {
+                                        background_color: Some(cx.theme().primary.opacity(0.1)),
+                                        ..Default::default()
+                                    },
+                                    HighlightStyle {
+                                        background_color: Some(cx.theme().secondary.opacity(0.2)),
+                                        ..Default::default()
+                                    },
+                                ]),
                         ),
                     )
                     .child(Button::new("send").small().primary().label("Send")),
