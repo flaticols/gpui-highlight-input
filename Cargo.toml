@@ -8,8 +8,8 @@ description = "A lightweight GPUI single-line input with application-owned highl
 
 [dependencies]
 gpui = { version = "0.2.2", git = "https://github.com/zed-industries/zed" }
-gpui-component = { git = "https://github.com/flaticols/gpui-component", rev = "71a0dad722115eb09537c39d4647a02b46c7d1e9", version = "0.5.2" }
-gpui-component-assets = { git = "https://github.com/flaticols/gpui-component", rev = "71a0dad722115eb09537c39d4647a02b46c7d1e9", version = "0.5.1" }
+gpui-component = { git = "https://github.com/flaticols/gpui-component", rev = "f8710cc215105343e48a02ced0bc98874aad42e8", version = "0.5.2" }
+gpui-component-assets = { git = "https://github.com/flaticols/gpui-component", rev = "f8710cc215105343e48a02ced0bc98874aad42e8", version = "0.5.1" }
 gpui_platform = { git = "https://github.com/zed-industries/zed" }
 
 [dev-dependencies]
